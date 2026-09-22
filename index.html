@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Résultats de pesées — STT-2902</title>
+<style>
+  :root {
+    --ink: #1f2933;
+    --paper: #fbfaf7;
+    --line: #d8d3c8;
+    --accent: #3d5a80;
+    --accent-soft: #eef2f6;
+    --error: #a4373a;
+    --attention: #f24c4c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    line-height: 1.5;
+    padding: 2.5rem 1.25rem 4rem;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  h1 {
+    font-size: 1.6rem;
+    font-weight: 600;
+    margin: 0 0 0.25rem;
+  }
+  .subtitle {
+    color: #5a6672;
+    margin: 0 0 2rem;
+    font-size: 0.98rem;
+  }
+  label {
+    display: block;
+    font-size: 0.9rem;
+    margin-bottom: 0.3rem;
+    color: #3a4450;
+  }
+  input[type="text"], input[type="number"] {
+    width: 100%;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    font-size: 1rem;
+    font-family: inherit;
+    background: #fff;
+  }
+  input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .field { margin-bottom: 1.25rem; }
+  fieldset {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 1rem 1rem 0.25rem;
+    margin: 0 0 1rem;
+  }
+  legend {
+    padding: 0 0.4rem;
+    font-size: 0.85rem;
+    color: var(--accent);
+  }
+  .row-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0.75rem;
+  }
+  @media (max-width: 520px) {
+    .row-grid { grid-template-columns: 1fr; }
+  }
+  button {
+    font-family: inherit;
+    font-size: 1rem;
+    padding: 0.65rem 1.3rem;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+  }
+  #btn-generer, #btn-envoyer {
+    background: var(--accent);
+    color: #fff;
+  }
+  #btn-generer:hover, #btn-envoyer:hover { background: #2f4763; }
+  #btn-reinitialiser {
+    background: var(--attention);
+    color: #edf0f3;
+    border: 1px solid var(--line);
+    margin-top: 0.75rem;
+  }
+  #btn-reinitialiser:hover { background: #f0ede6; }
+  #lignes-container { display: none; }
+  #confirmation, #erreur {
+    display: none;
+    margin-top: 1.25rem;
+    padding: 0.85rem 1rem;
+    border-radius: 4px;
+    font-size: 0.95rem;
+  }
+  #confirmation { background: var(--accent-soft); color: var(--accent); }
+  #erreur { background: #fbeceb; color: var(--error); }
+  hr { border: none; border-top: 1px solid var(--line); margin: 2rem 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Résultats de pesées</h1>
+  <p class="subtitle">Entrez vos résultats ci-dessous. Chaque envoi ajoute vos lignes à la feuille de calcul du cours.</p>
+
+  <div class="field">
+    <label for="nb-tailles">Combien de tailles d'échantillon avez-vous testées ?</label>
+    <input type="number" id="nb-tailles" min="1" max="50" step="1" placeholder="ex. 3">
+  </div>
+  <button type="button" id="btn-generer">Continuer</button>
+
+  <hr>
+
+  <form id="lignes-container">
+    <div id="lignes-liste"></div>
+    <button type="submit" id="btn-envoyer">Envoyer les résultats</button>
+  </form>
+
+  <button type="button" id="btn-reinitialiser">Réinitialiser tout</button>
+
+  <div id="confirmation">Vos résultats ont été envoyés. Merci !</div>
+  <div id="erreur">Une erreur est survenue. Vérifiez vos valeurs et réessayez.</div>
+</div>
+
+<script>
+  // Remplacez cette URL par celle de votre déploiement Google Apps Script (voir Code.gs)
+  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxGCreyYAVpUqmYxK9yxxhExfz_A2jU9H7tV9atmIr_XIzip8RPd2TadxQHH3O51mV4_w/exec";
+
+  const nbTaillesInput = document.getElementById('nb-tailles');
+  const btnGenerer = document.getElementById('btn-generer');
+  const btnReinitialiser = document.getElementById('btn-reinitialiser');
+  const lignesContainer = document.getElementById('lignes-container');
+  const lignesListe = document.getElementById('lignes-liste');
+  const confirmation = document.getElementById('confirmation');
+  const erreur = document.getElementById('erreur');
+
+  function creerLigne(i) {
+    const fs = document.createElement('fieldset');
+    fs.innerHTML = `
+      <legend>Taille d'échantillon ${i}</legend>
+      <div class="row-grid">
+        <div>
+          <label for="taille-${i}">Taille d'échantillon (n)</label>
+          <input type="number" id="taille-${i}" min="1" step="1" required>
+        </div>
+        <div>
+          <label for="pesees-${i}">Nombre de pesées</label>
+          <input type="number" id="pesees-${i}" min="1" step="1" required>
+        </div>
+        <div>
+          <label for="moyenne-${i}">Poids moyen</label>
+          <input type="number" id="moyenne-${i}" step="any" required>
+        </div>
+      </div>`;
+    return fs;
+  }
+
+  btnGenerer.addEventListener('click', () => {
+    const n = parseInt(nbTaillesInput.value, 10);
+    confirmation.style.display = 'none';
+    erreur.style.display = 'none';
+
+    if (!n || n < 1 || n > 50) {
+      erreur.textContent = "Entrez un nombre de tailles d'échantillon entre 1 et 50.";
+      erreur.style.display = 'block';
+      return;
+    }
+
+    const nombreActuel = lignesListe.children.length;
+
+    if (n < nombreActuel) {
+      // Retire les lignes en trop (à partir de la fin), sans toucher aux autres
+      for (let i = nombreActuel; i > n; i--) {
+        lignesListe.removeChild(lignesListe.lastElementChild);
+      }
+    } else if (n > nombreActuel) {
+      // Ajoute les nouvelles lignes manquantes, sans toucher aux lignes existantes
+      for (let i = nombreActuel + 1; i <= n; i++) {
+        lignesListe.appendChild(creerLigne(i));
+      }
+    }
+
+    lignesContainer.style.display = 'block';
+  });
+
+  btnReinitialiser.addEventListener('click', () => {
+    nbTaillesInput.value = '';
+    lignesListe.innerHTML = '';
+    lignesContainer.style.display = 'none';
+    confirmation.style.display = 'none';
+    erreur.style.display = 'none';
+  });
+
+  lignesContainer.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    confirmation.style.display = 'none';
+    erreur.style.display = 'none';
+
+    const n = lignesListe.children.length;
+
+    const lignes = [];
+    for (let i = 1; i <= n; i++) {
+      const taille = parseFloat(document.getElementById(`taille-${i}`).value);
+      const nbPesees = parseFloat(document.getElementById(`pesees-${i}`).value);
+      const poidsMoyen = parseFloat(document.getElementById(`moyenne-${i}`).value);
+      if (isNaN(taille) || isNaN(nbPesees) || isNaN(poidsMoyen)) {
+        erreur.textContent = `Remplissez toutes les valeurs pour la taille d'échantillon ${i}.`;
+        erreur.style.display = 'block';
+        return;
+      }
+      lignes.push({ taille, nbPesees, poidsMoyen });
+    }
+
+    const payload = { lignes };
+
+    try {
+      // mode "no-cors" + Content-Type "text/plain" : évite le préflight CORS
+      // que les Web Apps Google Apps Script ne gèrent pas nativement.
+      await fetch(SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+      confirmation.style.display = 'block';
+      nbTaillesInput.value = '';
+      lignesListe.innerHTML = '';
+      lignesContainer.style.display = 'none';
+    } catch (err) {
+      erreur.textContent = "Impossible de joindre le serveur. Vérifiez votre connexion et réessayez.";
+      erreur.style.display = 'block';
+    }
+  });
+</script>
+</body>
+</html>
