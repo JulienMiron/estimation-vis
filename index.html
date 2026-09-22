@@ -54,7 +54,7 @@
   fieldset {
     border: 1px solid var(--line);
     border-radius: 6px;
-    padding: 1rem 1rem 0.25rem;
+    padding: 1rem 1rem 0.9rem;
     margin: 0 0 1rem;
   }
   legend {
@@ -62,6 +62,38 @@
     font-size: 0.85rem;
     color: var(--accent);
   }
+  .pesees-liste { margin-top: 0.5rem; }
+  .pesee-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  .pesee-row input { flex: 1; }
+  .btn-retirer-pesee {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--error);
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0.4rem 0.65rem;
+  }
+  .btn-retirer-pesee:hover { background: #fbeceb; }
+  .btn-ajouter-pesee {
+    background: transparent;
+    border: 1px dashed var(--accent);
+    color: var(--accent);
+    font-size: 0.88rem;
+    padding: 0.4rem 0.8rem;
+    margin-bottom: 0.85rem;
+  }
+  .btn-ajouter-pesee:hover { background: var(--accent-soft); }
+  .stats-ligne {
+    font-size: 0.88rem;
+    color: #5a6672;
+    margin: 0.25rem 0 0;
+  }
+  .stats-ligne strong { color: var(--ink); }
   .row-grid {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
@@ -99,6 +131,8 @@
     font-size: 0.95rem;
   }
   #confirmation { background: var(--accent-soft); color: var(--accent); }
+  #confirmation p { margin: 0.3rem 0; }
+  #confirmation strong { color: var(--ink); }
   #erreur { background: #fbeceb; color: var(--error); }
   hr { border: none; border-top: 1px solid var(--line); margin: 2rem 0; }
 </style>
@@ -107,6 +141,11 @@
 <div class="wrap">
   <h1>Résultats de pesées</h1>
   <p class="subtitle">Entrez vos résultats ci-dessous. Chaque envoi ajoute vos lignes à la feuille de calcul du cours.</p>
+
+  <div class="field" id="poids-total-field">
+    <label for="poids-total">Poids total des vis (g)</label>
+    <input type="number" id="poids-total" min="0" step="any" required>
+  </div>
 
   <div class="field">
     <label for="nb-tailles">Combien de tailles d'échantillon avez-vous testées ?</label>
@@ -123,7 +162,7 @@
 
   <button type="button" id="btn-reinitialiser">Réinitialiser tout</button>
 
-  <div id="confirmation">Vos résultats ont été envoyés. Merci !</div>
+  <div id="confirmation"></div>
   <div id="erreur">Une erreur est survenue. Vérifiez vos valeurs et réessayez.</div>
 </div>
 
@@ -136,27 +175,84 @@
   const btnReinitialiser = document.getElementById('btn-reinitialiser');
   const lignesContainer = document.getElementById('lignes-container');
   const lignesListe = document.getElementById('lignes-liste');
+  const poidsTotalInput = document.getElementById('poids-total');
   const confirmation = document.getElementById('confirmation');
   const erreur = document.getElementById('erreur');
+
+  // Recalcule et affiche le nombre de pesées, la moyenne et la variance
+  // estimée (avec dénominateur n-1) pour une ligne (un fieldset) donnée.
+  function recalculerStats(fs) {
+    const valeurs = Array.from(fs.querySelectorAll('.pesee-input'))
+      .map(inp => parseFloat(inp.value))
+      .filter(v => !isNaN(v));
+
+    const nbSpan = fs.querySelector('.val-nb');
+    const moyenneSpan = fs.querySelector('.val-moyenne');
+    const varianceSpan = fs.querySelector('.val-variance');
+
+    const n = valeurs.length;
+    nbSpan.textContent = n;
+
+    if (n === 0) {
+      moyenneSpan.textContent = '—';
+      varianceSpan.textContent = '—';
+      return;
+    }
+
+    const moyenne = valeurs.reduce((a, b) => a + b, 0) / n;
+    moyenneSpan.textContent = moyenne.toFixed(4);
+
+    if (n < 2) {
+      varianceSpan.textContent = '—';
+    } else {
+      const sommeCarresEcarts = valeurs.reduce((acc, v) => acc + Math.pow(v - moyenne, 2), 0);
+      const variance = sommeCarresEcarts / (n - 1);
+      varianceSpan.textContent = variance.toFixed(4);
+    }
+  }
+
+  function ajouterPesee(liste) {
+    const row = document.createElement('div');
+    row.className = 'pesee-row';
+    row.innerHTML = `
+      <input type="number" step="any" class="pesee-input" placeholder="Poids d'une pesée">
+      <button type="button" class="btn-retirer-pesee" aria-label="Retirer cette pesée">×</button>`;
+    row.querySelector('.btn-retirer-pesee').addEventListener('click', () => {
+      const fs = liste.closest('fieldset');
+      row.remove();
+      recalculerStats(fs);
+    });
+    liste.appendChild(row);
+  }
 
   function creerLigne(i) {
     const fs = document.createElement('fieldset');
     fs.innerHTML = `
       <legend>Taille d'échantillon ${i}</legend>
-      <div class="row-grid">
-        <div>
-          <label for="taille-${i}">Taille d'échantillon (n)</label>
-          <input type="number" id="taille-${i}" min="1" step="1" required>
-        </div>
-        <div>
-          <label for="pesees-${i}">Nombre de pesées</label>
-          <input type="number" id="pesees-${i}" min="1" step="1" required>
-        </div>
-        <div>
-          <label for="moyenne-${i}">Poids moyen</label>
-          <input type="number" id="moyenne-${i}" step="any" required>
-        </div>
-      </div>`;
+      <div class="field">
+        <label for="taille-${i}">Taille d'échantillon (n)</label>
+        <input type="number" id="taille-${i}" class="taille-input" min="1" step="1" required>
+      </div>
+      <label>Pesées</label>
+      <div class="pesees-liste"></div>
+      <button type="button" class="btn-ajouter-pesee">+ Ajouter une pesée</button>
+      <p class="stats-ligne">
+        Nombre de pesées : <strong class="val-nb">0</strong> —
+        Moyenne : <strong class="val-moyenne">—</strong> —
+        Variance estimée : <strong class="val-variance">—</strong>
+      </p>`;
+
+    const liste = fs.querySelector('.pesees-liste');
+    ajouterPesee(liste);
+    ajouterPesee(liste);
+    recalculerStats(fs);
+
+    fs.querySelector('.btn-ajouter-pesee').addEventListener('click', () => {
+      ajouterPesee(liste);
+    });
+
+    liste.addEventListener('input', () => recalculerStats(fs));
+
     return fs;
   }
 
@@ -190,33 +286,107 @@
 
   btnReinitialiser.addEventListener('click', () => {
     nbTaillesInput.value = '';
+    poidsTotalInput.value = '';
     lignesListe.innerHTML = '';
     lignesContainer.style.display = 'none';
     confirmation.style.display = 'none';
     erreur.style.display = 'none';
   });
 
+  // Estimation du poids d'une vis : moyenne pondérée de (poids moyen / taille)
+  // sur toutes les lignes, chaque ligne étant pondérée par le nombre total
+  // de vis qu'elle représente (taille × nombre de pesées).
+  //
+  // Variance de cette estimation : chaque ligne contribue une variance de
+  // Var(poidsMoyen_i) = varianceLigne_i / nbPesees_i (variance de la moyenne
+  // des pesées de cette ligne). L'estimation globale étant une combinaison
+  // linéaire pondérée des poidsMoyen_i (poids = nbPesees_i / S), sa variance
+  // vaut Σ(nbPesees_i × varianceLigne_i) / S². Les lignes avec une seule
+  // pesée (variance non calculable) ne contribuent pas à cette somme.
+  function calculerStatsGlobales(lignesCalcul) {
+    let sommePoids = 0;
+    let sommeVis = 0;
+    let sommeVarPonderee = 0;
+    let auMoinsUneVariance = false;
+
+    lignesCalcul.forEach(l => {
+      sommePoids += l.poidsMoyen * l.nbPesees;
+      sommeVis += l.taille * l.nbPesees;
+      if (l.varianceLigne !== null) {
+        sommeVarPonderee += l.nbPesees * l.varianceLigne;
+        auMoinsUneVariance = true;
+      }
+    });
+
+    const poidsParVisEstime = sommePoids / sommeVis;
+    const varPoidsParVisEstime = auMoinsUneVariance
+      ? sommeVarPonderee / (sommeVis * sommeVis)
+      : null;
+
+    return { poidsParVisEstime, varPoidsParVisEstime };
+  }
+
   lignesContainer.addEventListener('submit', async (e) => {
     e.preventDefault();
     confirmation.style.display = 'none';
     erreur.style.display = 'none';
 
-    const n = lignesListe.children.length;
-
     const lignes = [];
-    for (let i = 1; i <= n; i++) {
-      const taille = parseFloat(document.getElementById(`taille-${i}`).value);
-      const nbPesees = parseFloat(document.getElementById(`pesees-${i}`).value);
-      const poidsMoyen = parseFloat(document.getElementById(`moyenne-${i}`).value);
-      if (isNaN(taille) || isNaN(nbPesees) || isNaN(poidsMoyen)) {
-        erreur.textContent = `Remplissez toutes les valeurs pour la taille d'échantillon ${i}.`;
+    const lignesCalcul = [];
+    let ligneInvalide = false;
+
+    Array.from(lignesListe.children).forEach((fs, index) => {
+      if (ligneInvalide) return;
+      const i = index + 1;
+      const taille = parseFloat(fs.querySelector('.taille-input').value);
+      const valeurs = Array.from(fs.querySelectorAll('.pesee-input'))
+        .map(inp => parseFloat(inp.value))
+        .filter(v => !isNaN(v));
+
+      if (isNaN(taille) || valeurs.length === 0) {
+        erreur.textContent = `Remplissez la taille d'échantillon et au moins une pesée pour la ligne ${i}.`;
         erreur.style.display = 'block';
+        ligneInvalide = true;
         return;
       }
+
+      const nbPesees = valeurs.length;
+      const poidsMoyen = valeurs.reduce((a, b) => a + b, 0) / nbPesees;
+      let varianceLigne = null;
+      if (nbPesees >= 2) {
+        const sommeCarresEcarts = valeurs.reduce((acc, v) => acc + Math.pow(v - poidsMoyen, 2), 0);
+        varianceLigne = sommeCarresEcarts / (nbPesees - 1);
+      }
+
       lignes.push({ taille, nbPesees, poidsMoyen });
+      lignesCalcul.push({ taille, nbPesees, poidsMoyen, varianceLigne });
+    });
+
+    if (ligneInvalide) return;
+
+    const poidsTotalVis = parseFloat(poidsTotalInput.value);
+    if (isNaN(poidsTotalVis) || poidsTotalVis <= 0) {
+      erreur.textContent = "Entrez le poids total des vis avant d'envoyer.";
+      erreur.style.display = 'block';
+      return;
     }
 
-    const payload = { lignes };
+    const { poidsParVisEstime, varPoidsParVisEstime } = calculerStatsGlobales(lignesCalcul);
+    const nombreVisEstime = Math.round(poidsTotalVis / poidsParVisEstime);
+
+    // Propagation de l'incertitude par la méthode delta :
+    // N̂ = poidsTotal / poidsParVisEstime, donc
+    // Var(N̂) ≈ (poidsTotal² / poidsParVisEstime⁴) × Var(poidsParVisEstime).
+    let varianceAffichee;
+    if (varPoidsParVisEstime === null) {
+      varianceAffichee = "non calculable (au moins 2 pesées sont nécessaires dans au moins une taille d'échantillon)";
+    } else {
+      const varianceNombreVis = (Math.pow(poidsTotalVis, 2) / Math.pow(poidsParVisEstime, 4)) * varPoidsParVisEstime;
+      const ecartTypeNombreVis = Math.sqrt(varianceNombreVis);
+      varianceAffichee = `${varianceNombreVis.toFixed(2)} (écart-type : ${ecartTypeNombreVis.toFixed(2)} vis)`;
+    }
+
+    const payload = { lignes, poidsTotalVis, poidsParVisEstime, nombreVisEstime };
 
     try {
       // mode "no-cors" + Content-Type "text/plain" : évite le préflight CORS
@@ -227,8 +397,16 @@
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
       });
+
+      confirmation.innerHTML = `
+        <p>Vos résultats ont été envoyés. Merci !</p>
+        <p>Poids estimé par vis : <strong>${poidsParVisEstime.toFixed(4)} g</strong></p>
+        <p>Nombre de vis estimé dans le lot : <strong>${nombreVisEstime}</strong></p>
+        <p>Variance estimée du nombre de vis : <strong>${varianceAffichee}</strong></p>`;
       confirmation.style.display = 'block';
+
       nbTaillesInput.value = '';
+      poidsTotalInput.value = '';
       lignesListe.innerHTML = '';
       lignesContainer.style.display = 'none';
     } catch (err) {

@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estimation du poids d'une vis — STT-2902</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --ink: #1f2933;
+    --paper: #fbfaf7;
+    --line: #d8d3c8;
+    --accent: #3d5a80;
+    --accent-soft: #eef2f6;
+    --error: #a4373a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    line-height: 1.5;
+    padding: 2.5rem 1.25rem 4rem;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; }
+  h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 0 0 0.25rem;
+  }
+  .subtitle {
+    color: #5a6672;
+    margin: 0 0 1.5rem;
+    font-size: 0.95rem;
+  }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+  button {
+    font-family: inherit;
+    font-size: 0.95rem;
+    padding: 0.5rem 1.1rem;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    background: var(--accent);
+    color: #fff;
+  }
+  button:hover { background: #2f4763; }
+  #statut {
+    font-size: 0.85rem;
+    color: #5a6672;
+  }
+  .chart-box {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 1.25rem;
+    height: 480px;
+  }
+  #erreur {
+    display: none;
+    margin-top: 1rem;
+    padding: 0.85rem 1rem;
+    border-radius: 4px;
+    font-size: 0.92rem;
+    background: #fbeceb;
+    color: var(--error);
+  }
+  .legende {
+    font-size: 0.85rem;
+    color: #5a6672;
+    margin-top: 0.75rem;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Poids estimé d'une vis selon la taille d'échantillon</h1>
+  <p class="subtitle">Chaque point correspond à un échantillon soumis par un(e) étudiant(e). Plus la taille d'échantillon augmente, plus l'estimation devrait se stabiliser autour du vrai poids d'une vis.</p>
+
+  <div class="toolbar">
+    <button id="btn-rafraichir">Rafraîchir maintenant</button>
+    <span id="statut">Chargement…</span>
+  </div>
+
+  <div class="chart-box">
+    <canvas id="graphique"></canvas>
+  </div>
+
+  <p class="legende">Taille des points proportionnelle au nombre de pesées de cet échantillon. Le graphique se rafraîchit automatiquement toutes les 15 secondes.</p>
+
+  <div id="erreur"></div>
+</div>
+
+<script>
+  // Remplacez par l'URL CSV obtenue via Fichier > Partager > Publier sur le Web
+  // (choisissez la feuille "Données" et le format CSV).
+  const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTWj732DP275KVNk55N6p2DjUEOVV112jtQVVJYQ-xOz2LKvGWomZ9r-kOi6etTpqB40eX-ssaMrUtP/pub?gid=0&single=true&output=csv";
+
+  const REFRESH_INTERVAL_MS = 15000;
+
+  const statutEl = document.getElementById('statut');
+  const erreurEl = document.getElementById('erreur');
+  const ctx = document.getElementById('graphique').getContext('2d');
+
+  let graphique = null;
+
+  function tailleDuPoint(nbPesees) {
+    // Échelle douce : plus de pesées = point un peu plus gros, sans exploser.
+    return 4 + Math.min(Math.sqrt(nbPesees) * 2.2, 14);
+  }
+
+  // La feuille utilise la virgule comme séparateur décimal (ex. "32,2").
+  // parseFloat ne comprend que le point, donc on convertit avant de parser.
+  function parserNombre(valeur) {
+    if (typeof valeur !== 'string') return parseFloat(valeur);
+    return parseFloat(valeur.trim().replace(',', '.'));
+  }
+
+  async function chargerDonnees() {
+    erreurEl.style.display = 'none';
+    statutEl.textContent = 'Actualisation…';
+
+    const controleur = new AbortController();
+    const delaiMax = setTimeout(() => controleur.abort(), 8000);
+
+    try {
+      const urlAvecCacheBust = CSV_URL + (CSV_URL.includes('?') ? '&' : '?') + 'cachebust=' + Date.now();
+      console.log('Requête vers :', urlAvecCacheBust);
+
+      const reponse = await fetch(urlAvecCacheBust, { signal: controleur.signal });
+      clearTimeout(delaiMax);
+
+      console.log('Statut HTTP :', reponse.status);
+      if (!reponse.ok) throw new Error('Réponse HTTP ' + reponse.status);
+
+      const texteCSV = await reponse.text();
+      console.log('Premiers caractères reçus :', texteCSV.slice(0, 200));
+
+      const resultat = Papa.parse(texteCSV, { header: true, skipEmptyLines: true });
+      const lignes = resultat.data;
+      console.log('Lignes parsées :', lignes);
+
+      const points = [];
+      lignes.forEach(ligne => {
+        const taille = parserNombre(ligne["Taille d'échantillon"]);
+        const nbPesees = parserNombre(ligne["Nombre de pesées"]);
+        const poidsMoyen = parserNombre(ligne["Poids moyen"]);
+        if (isNaN(taille) || isNaN(poidsMoyen) || taille === 0) return;
+        points.push({
+          x: taille,
+          y: poidsMoyen / taille,
+          nbPesees: isNaN(nbPesees) ? 1 : nbPesees
+        });
+      });
+
+      console.log('Points calculés :', points);
+
+      afficherGraphique(points);
+      statutEl.textContent = `${points.length} échantillon(s) — dernière mise à jour : ${new Date().toLocaleTimeString('fr-CA')}`;
+
+    } catch (err) {
+      clearTimeout(delaiMax);
+      console.error('Échec du chargement :', err);
+      erreurEl.textContent = err.name === 'AbortError'
+        ? "La requête a pris trop de temps (plus de 8 secondes) et a été annulée. Vérifiez l'URL CSV et votre connexion."
+        : `Impossible de charger les données (${err.message}). Vérifiez que la feuille est bien publiée et que l'URL CSV est correcte.`;
+      erreurEl.style.display = 'block';
+      statutEl.textContent = 'Échec de la dernière actualisation.';
+    }
+  }
+
+  function afficherGraphique(points) {
+    const donnees = {
+      datasets: [{
+        label: "Estimation du poids d'une vis par échantillon",
+        data: points,
+        pointRadius: points.map(p => tailleDuPoint(p.nbPesees)),
+        pointHoverRadius: points.map(p => tailleDuPoint(p.nbPesees) + 2),
+        backgroundColor: 'rgba(61, 90, 128, 0.55)',
+        borderColor: 'rgba(61, 90, 128, 0.9)'
+      }]
+    };
+
+    const options = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (item) => {
+              const p = item.raw;
+              return `taille ${p.x} — poids/vis ≈ ${p.y.toFixed(4)} g (${p.nbPesees} pesées)`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          title: { display: true, text: "Taille d'échantillon" },
+          type: 'linear'
+        },
+        y: {
+          title: { display: true, text: "Poids estimé d'une vis (g)" }
+        }
+      }
+    };
+
+    if (graphique) {
+      graphique.data = donnees;
+      graphique.options = options;
+      graphique.update();
+    } else {
+      graphique = new Chart(ctx, { type: 'scatter', data: donnees, options: options });
+    }
+  }
+
+  document.getElementById('btn-rafraichir').addEventListener('click', chargerDonnees);
+
+  chargerDonnees();
+  setInterval(chargerDonnees, REFRESH_INTERVAL_MS);
+</script>
+</body>
+</html>
