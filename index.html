@@ -137,6 +137,23 @@
   hr { border: none; border-top: 1px solid var(--line); margin: 2rem 0; }
 </style>
 </head>
+<script>
+  // Molette : on retire le focus du champ pour que le défilement fasse défiler la page
+  document.addEventListener('wheel', (e) => {
+    const el = e.target;
+    if (el.matches('input[type="number"]') && document.activeElement === el) {
+      el.blur();
+    }
+  }, { passive: true });
+
+  // Flèches ↑/↓ : désactivées aussi, pour que seule la saisie de chiffres modifie la valeur
+  document.addEventListener('keydown', (e) => {
+    if (e.target.matches('input[type="number"]') &&
+        (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+    }
+  });
+</script>
 <body>
 <div class="wrap">
   <h1>Résultats de pesées</h1>
